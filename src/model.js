@@ -11,6 +11,19 @@ export const timeLabel = value => new Intl.DateTimeFormat('en-IN', {
 }).format(new Date(value));
 export const roundMetres = value => Math.round((value + Number.EPSILON) * 1000) / 1000;
 
+export function fieldVisible(settings, entity, key) {
+  return !settings?.hidden_fields?.includes(`${entity}.${key}`);
+}
+
+export function fieldLabel(settings, entity, key, fallback) {
+  return settings?.field_labels?.[`${entity}.${key}`] || fallback;
+}
+
+export function visibleFacts(settings, entity, rows) {
+  return rows.filter(([key]) => fieldVisible(settings,entity,key))
+    .map(([key,label,value]) => [fieldLabel(settings,entity,key,label),value]);
+}
+
 export function reconcile(batches, cuts) {
   const result = { inward: 0, main: 0, balance: 0, used: 0, waste: 0, remaining: 0, mainPieces: 0, balancePieces: 0, pieces: 0, average: null };
   for (const batch of batches) result.inward += Math.round(Number(batch.metres) * 1000);

@@ -6,12 +6,13 @@ Use a Supabase project dedicated to this factory and an HTTPS static site at the
 
 In the [Supabase dashboard](https://supabase.com/dashboard), create a project in your preferred region and record its project URL and public publishable key from the Connect dialog or API Keys settings. In Authentication, enable email/password, disable public signup and anonymous sign-in, and set an appropriate minimum password length. If using email invitations and password recovery in production, configure SMTP and test delivery. Supabase documents [Auth configuration](https://supabase.com/docs/guides/auth/general-configuration) and [custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp).
 
-## 2. Apply both database migrations
+## 2. Apply the database migrations
 
 In the project's SQL Editor, open a new query for each file and run the whole file, in this order.
 
 1. [`supabase/migrations/202611210001_cutting_book.sql`](supabase/migrations/202611210001_cutting_book.sql)
 2. [`supabase/migrations/202611210002_register_queries.sql`](supabase/migrations/202611210002_register_queries.sql)
+3. [`supabase/migrations/202611210003_field_visibility.sql`](supabase/migrations/202611210003_field_visibility.sql)
 
 For a fresh Supabase project, these migrations create the register, permissions, audit triggers, transactional write functions, report queries, and Realtime publication entries. Apply each migration once. Leave `public` enabled for the Data API. The migration uses Supabase’s `supabase_realtime` publication. [Supabase Postgres Changes](https://supabase.com/docs/guides/realtime/postgres-changes).
 

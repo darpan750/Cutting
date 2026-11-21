@@ -145,8 +145,8 @@ function Workspace({ session, signOut }) {
 
   const navigation = [['dashboard','Overview'],['lots','Lots'],['reports','Reports'],...(role === 'admin' ? [['settings','Settings']] : [])];
   let content;
-  if (page === 'dashboard') content = <Dashboard {...{ signal,canWrite }} />;
-  if (page === 'lots' && ['','open'].includes(parameter) && extra !== 'record') content = <Register key={parameter} {...{ signal,canWrite }} isAdmin={role === 'admin'} openOnly={parameter === 'open'} />;
+  if (page === 'dashboard') content = <Dashboard {...{ signal,canWrite,settings }} />;
+  if (page === 'lots' && ['','open','archived'].includes(parameter) && extra !== 'record') content = <Register key={parameter} {...{ signal,canWrite,settings }} isAdmin={role === 'admin'} view={parameter === 'archived' && role !== 'admin' ? '' : parameter} />;
   else if (page === 'lots' && parameter) content = <LotPage key={parameter} lotNo={parameter} {...{ signal,role,settings }} onSaved={saved} />;
   if (page === 'reports') content = <Reports key={parameter} {...{ signal,settings }} lot={parameter} />;
   if (page === 'settings' && role === 'admin') content = <Settings {...{ signal,settings }} userId={session.user.id} onSaved={saved} />;

@@ -46,7 +46,9 @@ A mobile-first lot register with a React frontend and a Supabase PostgreSQL back
 
 Every production mutation goes through a PostgreSQL transaction. The database locks the lot and compares its revision with the one the editor opened. If someone saves first, the second save is rejected and its draft stays visible for review. Close and reopen the editor to see the current record before reapplying changes. With Supabase Realtime, foreground devices refresh when the register changes. Focus, reconnect, and a periodic refresh catch missed events.
 
-Admin deletion of a lot archives it and retains its history and unique number. Admins can find archived lots using the status filter. Child records can be deleted when dependencies permit, and their previous values remain in the audit log. Audit records show the actor, time, and before/after values. Auth login and active register membership are both required to see production data.
+Use **Settings → Rename or hide fields** to choose field names and hide optional fields. Blank custom names restore the original labels. Saved values stay in the database and reappear when you unhide a field. Use **Edit custom fields** to rename or deactivate fields you added.
+
+Use **Edit lot** or **Edit** beside an entry to update it. **Delete lot** archives the lot and retains its history and unique number. Admins can restore it from **Lots → Archived**. Entries can be deleted when their dependencies allow it, and the audit log keeps their previous values. Auth login and active register membership are both required to see production data.
 
 ## Checks
 
@@ -56,4 +58,4 @@ npm run build
 npm run preview
 ```
 
-The tests run the production calculations and load both migrations into an isolated PostgreSQL test runtime. Test accounts and records are ephemeral and never become part of the hosted database. Use the [deployment verification steps](DEPLOYMENT.md#verify-on-two-devices) for hosted Auth, Realtime, exports, and installation.
+The tests run the production calculations and load the migrations into an isolated PostgreSQL test runtime. Test accounts and records are ephemeral and never become part of the hosted database. Use the [deployment verification steps](DEPLOYMENT.md#verify-on-two-devices) for hosted Auth, Realtime, exports, and installation.

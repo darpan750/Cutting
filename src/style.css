@@ -132,6 +132,12 @@ dialog form { display: flex; flex-direction: column; min-height: 0; }
 .quantity-entry, .field-settings { margin-top: 1rem; }
 .quantity-entry .table-scroll { margin-top: .5rem; }
 .quantity-entry .button, .field-settings .button { margin-top: .55rem; }
+.layout-group summary { cursor: pointer; padding: .3rem; }
+.layout-fields { margin-top: .55rem; }
+.layout-field { border: 1px solid var(--border); border-radius: .5rem; padding: .6rem; }
+.checkbox-label { display: inline-flex; align-items: center; gap: .45rem; min-height: 44px; cursor: pointer; }
+.checkbox-label input { width: 1.15rem; min-height: auto; height: 1.15rem; accent-color: var(--teal); }
+.register-table th .actions { margin-top: .28rem; white-space: normal; }
 .quantity-inputs td, .quantity-inputs th { padding: .38rem; }
 .quantity-inputs input { min-width: 4rem; }
 .welcome { min-height: 100dvh; display: grid; place-items: center; padding: 1rem; background: linear-gradient(145deg,#13243b 0%,#1d3c53 50%,#0e625f 100%); }

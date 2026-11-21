@@ -1,21 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { checked, client, rpc, useResource } from './api.js';
 import { LotEditor } from './editor.jsx';
-import { dateLabel, money, number, reconcile, sizeTotals, timeLabel } from './model.js';
+import { dateLabel, fieldLabel, fieldVisible, money, number, reconcile, sizeTotals, timeLabel, visibleFacts } from './model.js';
 import { DataTable, Empty, ErrorNotice, Facts, Field, Panel } from './ui.jsx';
 
 const lotHref = lot => `#/lots/${encodeURIComponent(lot)}/record`;
 const statusLabel = lot => lot.archived ? 'Archived' : lot.status === 'complete' ? 'Complete' : 'Open';
 
-function LotList({ rows }) {
+function LotList({ rows, settings }) {
   if (!rows.length) return <Empty>No lots match this view.</Empty>;
   return <div className="lot-list">{rows.map(lot => <a href={lotHref(lot.lot_no)} key={lot.lot_no} className="lot-row">
-    <div><strong>Lot {lot.lot_no}</strong><span>{dateLabel(lot.cutting_date)}{lot.style_no && ` · Style ${lot.style_no}`}{lot.order_no && ` · Order ${lot.order_no}`}</span></div>
+    <div><strong>Lot {lot.lot_no}</strong><span>{dateLabel(lot.cutting_date)}{fieldVisible(settings,'lot','style_no') && lot.style_no && ` · ${fieldLabel(settings,'lot','style_no','Style')} ${lot.style_no}`}{fieldVisible(settings,'lot','order_no') && lot.order_no && ` · ${fieldLabel(settings,'lot','order_no','Order')} ${lot.order_no}`}</span></div>
     <div><strong>{number(lot.pieces)} pcs</strong><span className={`badge ${statusLabel(lot).toLowerCase()}`}>{statusLabel(lot)}</span></div>
   </a>)}</div>;
 }
 
-export function Dashboard({ signal, canWrite }) {
+export function Dashboard({ signal, canWrite, settings }) {
   const load = useCallback(() => rpc('book_dashboard'), []);
   const { data, loading, error, refresh } = useResource(load,'dashboard',signal);
   return <>
@@ -27,7 +27,7 @@ export function Dashboard({ signal, canWrite }) {
       <div className="metrics">{[['Pieces today',data.today],['Total pieces',data.pieces],['Active lots',data.lots],['Cutting entries',data.entries],['Open lots',data.pending]].map(([label,value], index) =>
         <div className={`metric ${index === 0 ? 'featured' : ''}`} key={label}><span>{label}</span><strong>{number(value)}</strong></div>)}</div>
       <div className="dashboard-grid">
-        <Panel title="Recently updated lots" actions={<a className="button small" href="#/lots">All lots</a>}><LotList rows={data.recent.slice(0,8)} /></Panel>
+        <Panel title="Recently updated lots" actions={<a className="button small" href="#/lots">All lots</a>}><LotList rows={data.recent.slice(0,8)} settings={settings} /></Panel>
         <Panel title="Quick actions" className="quick"><div className="quick-links">
           {canWrite && <a className="button" href="#/new">Create new lot</a>}
           <a className="button" href="#/lots">Search the register</a>
@@ -41,31 +41,34 @@ export function Dashboard({ signal, canWrite }) {
 
 const emptySearch = { term:'', start_on:'', end_on:'', style:'', colour:'', state:'' };
 
-export function Register({ signal, canWrite, isAdmin, openOnly }) {
-  const initial = { ...emptySearch, state:openOnly ? 'open' : '' };
+export function Register({ signal, canWrite, isAdmin, view, settings }) {
+  const initial = { ...emptySearch, state:view };
   const [draft, setDraft] = useState(initial);
   const [filters, setFilters] = useState(initial);
   const [page, setPage] = useState(0);
   const load = useCallback(() => rpc('lot_search', { ...filters, start_on:filters.start_on || null, end_on:filters.end_on || null, page_number:page }), [filters,page]);
   const { data, loading, error, refresh } = useResource(load,JSON.stringify([filters,page]),signal);
   return <>
-    <div className="page-heading"><div><p className="eyebrow">CUTTING REGISTER</p><h1>Lots</h1></div>{canWrite && <a className="button primary" href="#/new">Create lot</a>}</div>
+    <div className="page-heading"><div><p className="eyebrow">CUTTING REGISTER</p><h1>{view === 'archived' ? 'Archived lots' : 'Lots'}</h1></div>
+      <div className="actions">{isAdmin && <a className="button" href={view === 'archived' ? '#/lots' : '#/lots/archived'}>{view === 'archived' ? 'Active lots' : 'Archived'}</a>}
+        {canWrite && view !== 'archived' && <a className="button primary" href="#/new">Create lot</a>}</div></div>
     <Panel title="Find a lot" className="no-print">
       <form className="filters" onSubmit={event => { event.preventDefault(); setPage(0); setFilters({ ...draft }); }}>
         <div className="form-grid">
           {[
-            ['term','Lot, date, order, style, barcode or colour',{ type:'search', placeholder:'Search the register' }],
+            ['term','Search lot records',{ type:'search', placeholder:'Lot number, date or reference' }],
             ['start_on','Lot date from',{ type:'date', max:draft.end_on || undefined }], ['end_on','Lot date to',{ type:'date', min:draft.start_on || undefined }],
-            ['style','Style'], ['colour','Colour'], ['state','Status',{ options:[['','All active'],['open','Open'],['complete','Complete'],...(isAdmin ? [['archived','Archived']] : [])] }],
+            ...(fieldVisible(settings,'lot','style_no') ? [['style',fieldLabel(settings,'lot','style_no','Style')]] : []),
+            ['colour',fieldLabel(settings,'colour','name','Colour')], ['state',fieldLabel(settings,'lot','status','Status'),{ options:[['','All active'],['open','Open'],['complete','Complete'],...(isAdmin ? [['archived','Archived']] : [])] }],
           ].map(([key,label,props]) => <Field key={key} {...props} label={label} value={draft[key]} change={value => setDraft(current => ({ ...current,[key]:value }))} />)}
         </div>
-        <div className="actions"><button className="button primary">Search lots</button><button type="button" className="button" onClick={() => { setDraft(emptySearch); setFilters(emptySearch); setPage(0); }}>Clear filters</button></div>
+        <div className="actions"><button className="button primary">Search lots</button><button type="button" className="button" onClick={() => { setDraft(initial); setFilters(initial); setPage(0); }}>Clear filters</button></div>
       </form>
     </Panel>
     <Panel title={data ? `${number(data.count)} ${data.count === 1 ? 'lot' : 'lots'}` : 'Search results'}>
       <ErrorNotice error={error} retry={refresh} />
       {!data && loading && <Empty>Loading lots…</Empty>}
-      {data && <><LotList rows={data.rows} />{(page > 0 || data.count > 25) && <div className="pagination">
+      {data && <><LotList rows={data.rows} settings={settings} />{(page > 0 || data.count > 25) && <div className="pagination">
         <button type="button" className="button small" disabled={page === 0 || loading} onClick={() => setPage(page - 1)}>Previous</button>
         <span>Page {page + 1} of {Math.max(1,Math.ceil(data.count / 25))}</span>
         <button type="button" className="button small" disabled={(page + 1) * 25 >= data.count || loading} onClick={() => setPage(page + 1)}>Next</button>
@@ -75,7 +78,7 @@ export function Register({ signal, canWrite, isAdmin, openOnly }) {
 }
 
 function customFacts(settings, scope, row) {
-  return settings.field_definitions.filter(field => field.scope === scope && row.extra?.[field.id]).map(field => [field.label,row.extra[field.id]]);
+  return settings.field_definitions.filter(field => field.scope === scope && field.active && row.extra?.[field.id]).map(field => [field.label,row.extra[field.id]]);
 }
 
 function Controls({ entity, row, open, canWrite, isAdmin }) {
@@ -100,12 +103,14 @@ function Fabric({ record, settings, permissions }) {
         {batches.map(batch => <div className="subrecord" key={batch.id}>
           <div className="section-line"><h4>Batch {batch.batch_no}</h4><Controls entity="batch" row={batch} {...permissions} /></div>
           <Facts rows={[
-            ['Inward',`${number(batch.metres)} m`],['Barcode',batch.barcode],['Rolls',batch.roll_count],['Mill / supplier',batch.supplier],
-            ['Challan / bill',batch.bill_no],['Inward date',batch.received_on && dateLabel(batch.received_on)],['Fabric quality',batch.fabric],
-            ['Width',batch.width_inches != null ? `${number(batch.width_inches)} in` : null],
-            ['Length shrinkage',batch.shrink_length != null ? `${number(batch.shrink_length)}%` : null],
-            ['Width shrinkage',batch.shrink_width != null ? `${number(batch.shrink_width)}%` : null],
-            ['Remarks',batch.remarks], ...customFacts(settings,'batch',batch),
+            ...visibleFacts(settings,'batch',[
+              ['metres','Inward',`${number(batch.metres)} m`],['barcode','Barcode',batch.barcode],['roll_count','Rolls',batch.roll_count],['supplier','Mill / supplier',batch.supplier],
+              ['bill_no','Challan / bill',batch.bill_no],['received_on','Inward date',batch.received_on && dateLabel(batch.received_on)],['fabric','Fabric quality',batch.fabric],
+              ['width_inches','Width',batch.width_inches != null ? `${number(batch.width_inches)} in` : null],
+              ['shrink_length','Length shrinkage',batch.shrink_length != null ? `${number(batch.shrink_length)}%` : null],
+              ['shrink_width','Width shrinkage',batch.shrink_width != null ? `${number(batch.shrink_width)}%` : null],
+              ['remarks','Remarks',batch.remarks],
+            ]), ...customFacts(settings,'batch',batch),
           ]} />
         </div>)}
       </div>;
@@ -116,7 +121,13 @@ function Fabric({ record, settings, permissions }) {
 function Cutting({ record, settings, permissions }) {
   const totals = sizeTotals(record.cuts);
   const sizes = settings.sizes.filter(size => size.active || totals.has(size.id));
-  const heading = ['Colour / reference','Batch','Cut date','Roll m','Marker m','Layers','Ratio',...sizes.map(size => size.label),'Main pcs','Balance pcs','Total pcs',...(permissions.canWrite ? [<span className="no-print">Actions</span>] : [])];
+  const labelFor = (key,label) => fieldLabel(settings,'cut',key,label);
+  const showReference = fieldVisible(settings,'cut','reference');
+  const showRoll = fieldVisible(settings,'cut','roll_metres');
+  const referenceLabel = showReference ? `${fieldLabel(settings,'colour','name','Colour')} / ${labelFor('reference','reference')}` : fieldLabel(settings,'colour','name','Colour');
+  const columns = [['roll_metres','Roll m'],['marker_metres','Marker m'],['layers','Layers']].filter(([key]) => fieldVisible(settings,'cut',key));
+  const leadingColumns = [referenceLabel,labelFor('batch_id','Batch'),labelFor('cut_on','Cut date'),...columns.map(([key,label]) => labelFor(key,label)),'Ratio'];
+  const heading = [...leadingColumns,...sizes.map(size => size.label),labelFor('pieces','Main pcs'),labelFor('balance_pieces','Balance pcs'),'Total pcs'];
   return <Panel title="Size ratio & cutting summary" secondary="Size columns include main and balance pieces" actions={permissions.canWrite &&
     <button type="button" className="button small secondary" disabled={!record.batches.length} onClick={() => permissions.open({ entity:'cut' })}>Add cutting entry</button>}>
     {!record.cuts.length ? <Empty>{record.batches.length ? 'No cutting entries yet.' : 'Add a fabric batch before recording a cut.'}</Empty> : <>
@@ -127,46 +138,47 @@ function Cutting({ record, settings, permissions }) {
           if (!cuts.length) return null;
           const summary = reconcile(batches,cuts);
           const colourSizes = sizeTotals(cuts);
-          return <ColourCutRows key={colour.id} {...{ colour,batches,cuts,summary,colourSizes,sizes,permissions,settings }} />;
+          return <ColourCutRows key={colour.id} {...{ colour,batches,cuts,summary,colourSizes,sizes,permissions,showReference,columns }} />;
         })}</tbody>
-        <tfoot><tr><th scope="row" colSpan={7}>Lot total</th>{sizes.map(size => <td key={size.id}>{number(totals.get(size.id))}</td>)}
-          {(() => { const total = reconcile(record.batches,record.cuts); return <><td>{number(total.mainPieces)}</td><td>{number(total.balancePieces)}</td><td>{number(total.pieces)}</td></>; })()}
-          {permissions.canWrite && <td className="no-print" />}</tr></tfoot>
+        <tfoot><tr><th scope="row" colSpan={leadingColumns.length}>Lot total</th>{sizes.map(size => <td key={size.id}>{number(totals.get(size.id))}</td>)}
+          {(() => { const total = reconcile(record.batches,record.cuts); return <><td>{number(total.mainPieces)}</td><td>{number(total.balancePieces)}</td><td>{number(total.pieces)}</td></>; })()}</tr></tfoot>
       </DataTable></div>
       {sizes.length > 8 && <div className="print-only">{record.cuts.map(cut => {
         const batch = record.batches.find(row => row.id === cut.batch_id);
         const colour = record.colours.find(row => row.id === batch?.colour_id);
         const labels = new Map(sizes.map(size => [size.id,size.label]));
-        return <div key={cut.id} className="subrecord"><h4>{colour?.name} · {batch?.batch_no} · {cut.reference || 'Cut'} · {dateLabel(cut.cut_on)}</h4>
+        return <div key={cut.id} className="subrecord"><h4>{colour?.name} · {batch?.batch_no} · {showReference && cut.reference || 'Cut'} · {dateLabel(cut.cut_on)}</h4>
           <Facts rows={[
-            ['Layers',cut.layers], ['Marker metres',cut.marker_metres], ['Roll metres',cut.roll_metres],
-            ...cut.quantities.map(row => [labels.get(row.size_id),`${number(row.pieces)} main + ${number(row.balance_pieces)} balance${cut.method === 'ratio' ? ` · ratio ${row.ratio}` : ''}`]),
+            ...columns.map(([key,label]) => [labelFor(key,label),cut[key]]),
+            ...cut.quantities.map(row => [labels.get(row.size_id),`${number(row.pieces)} ${labelFor('pieces','main')} + ${number(row.balance_pieces)} ${labelFor('balance_pieces','balance')}${cut.method === 'ratio' ? ` · ratio ${row.ratio}` : ''}`]),
           ]} /></div>;
       })}</div>}
-      <DataTable label="Fabric use by cutting entry" headings={['Colour / reference','Batch','Cut date','Main used m','Balance used m','Waste m','Roll remaining m']} className="numeric">
+      <DataTable label="Fabric use by cutting entry" headings={[...leadingColumns.slice(0,3),labelFor('main_used','Main used m'),labelFor('balance_used','Balance used m'),labelFor('waste_metres','Waste m'),...(showRoll ? ['Roll remaining m'] : [])]} className="numeric">
         <tbody>{record.cuts.map(cut => {
           const batch = record.batches.find(row => row.id === cut.batch_id);
           const colour = record.colours.find(row => row.id === batch?.colour_id);
           const roll = cut.roll_metres == null ? null : reconcile([{ metres:cut.roll_metres }],[cut]);
-          return <tr key={cut.id}><th scope="row">{colour?.name}{cut.reference && ` · ${cut.reference}`}</th>
+          return <tr key={cut.id}><th scope="row">{colour?.name}{showReference && cut.reference && ` · ${cut.reference}`}</th>
             <td>{batch?.batch_no}</td><td>{dateLabel(cut.cut_on)}</td><td>{number(cut.main_used)}</td><td>{number(cut.balance_used)}</td>
-            <td>{number(cut.waste_metres)}</td><td className={roll?.remaining < 0 ? 'negative' : ''}>{roll ? number(roll.remaining) : '—'}</td></tr>;
+            <td>{number(cut.waste_metres)}</td>{showRoll && <td className={roll?.remaining < 0 ? 'negative' : ''}>{roll ? number(roll.remaining) : '—'}</td>}</tr>;
         })}</tbody>
       </DataTable>
-      {record.cuts.filter(cut => cut.remarks || customFacts(settings,'cut',cut).length > 0).map(cut => <div key={cut.id} className="subrecord">
-        <h4>{cut.reference || 'Cut'} · {dateLabel(cut.cut_on)}</h4><Facts rows={[[ 'Remarks',cut.remarks ],...customFacts(settings,'cut',cut)]} /></div>)}
+      {record.cuts.map(cut => {
+        const notes = [...visibleFacts(settings,'cut',[['remarks','Remarks',cut.remarks]]), ...customFacts(settings,'cut',cut)].filter(([,value]) => value);
+        return notes.length > 0 && <div key={cut.id} className="subrecord"><h4>{showReference && cut.reference || 'Cut'} · {dateLabel(cut.cut_on)}</h4><Facts rows={notes} /></div>;
+      })}
     </>}
   </Panel>;
 }
 
-function ColourCutRows({ colour,batches,cuts,summary,colourSizes,sizes,permissions }) {
+function ColourCutRows({ colour,batches,cuts,summary,colourSizes,sizes,permissions,showReference,columns }) {
   return <>
     {cuts.map(cut => {
       const numbers = reconcile([], [cut]);
       const bySize = new Map(cut.quantities.map(quantity => [quantity.size_id,quantity]));
-      return <tr key={cut.id}><th scope="row">{colour.name}{cut.reference && ` · ${cut.reference}`}</th>
+      return <tr key={cut.id}><th scope="row">{colour.name}{showReference && cut.reference && ` · ${cut.reference}`}<Controls entity="cut" row={cut} {...permissions} /></th>
         <td>{batches.find(batch => batch.id === cut.batch_id)?.batch_no}</td><td>{dateLabel(cut.cut_on)}</td>
-        {[cut.roll_metres,cut.marker_metres,cut.layers].map((value,index) => <td key={index}>{value == null ? '—' : number(value)}</td>)}
+        {columns.map(([key]) => <td key={key}>{cut[key] == null ? '—' : number(cut[key])}</td>)}
         <td>{cut.method === 'ratio' ? number(cut.quantities.reduce((sum,quantity) => sum + quantity.ratio,0)) : '—'}</td>
         {sizes.map(size => {
           const quantity = bySize.get(size.id);
@@ -175,11 +187,10 @@ function ColourCutRows({ colour,batches,cuts,summary,colourSizes,sizes,permissio
             {quantity?.balance_pieces > 0 && <small className="cell-note">{number(quantity.balance_pieces)} bal.</small>}</td>;
         })}
         <td>{number(numbers.mainPieces)}</td><td>{number(numbers.balancePieces)}</td><td><strong>{number(numbers.pieces)}</strong></td>
-        {permissions.canWrite && <td className="no-print"><Controls entity="cut" row={cut} {...permissions} /></td>}
       </tr>;
     })}
-    <tr className="subtotal"><th scope="row" colSpan={7}>{colour.name} total</th>{sizes.map(size => <td key={size.id}>{number(colourSizes.get(size.id))}</td>)}
-      <td>{number(summary.mainPieces)}</td><td>{number(summary.balancePieces)}</td><td>{number(summary.pieces)}</td>{permissions.canWrite && <td className="no-print" />}</tr>
+    <tr className="subtotal"><th scope="row" colSpan={4 + columns.length}>{colour.name} total</th>{sizes.map(size => <td key={size.id}>{number(colourSizes.get(size.id))}</td>)}
+      <td>{number(summary.mainPieces)}</td><td>{number(summary.balancePieces)}</td><td>{number(summary.pieces)}</td></tr>
   </>;
 }
 
@@ -199,23 +210,29 @@ function Reconciliation({ record, summary }) {
 }
 
 function Jobwork({ record, settings, permissions }) {
+  const labelFor = (key,label) => fieldLabel(settings,'jobwork',key,label);
+  const showBundle = fieldVisible(settings,'jobwork','bundle');
+  const showSign = fieldVisible(settings,'jobwork','signed_by');
   return <Panel title="Karigar issue & receive" secondary="Jobwork for this lot" actions={permissions.canWrite &&
     <button type="button" className="button small secondary" onClick={() => permissions.open({ entity:'jobwork' })}>Add jobwork</button>}>
     {!record.jobwork.length ? <Empty>No jobwork recorded.</Empty> : <>
-      <DataTable label="Jobwork issue and receive" headings={['Issued on','Work type','Karigar','Bundle / size','Issued','Received on','Good pcs','Damage','Pending','Rate','Amount','Sign',...(permissions.canWrite ? [<span className="no-print">Actions</span>] : [])]} className="numeric">
+      <DataTable label="Jobwork issue and receive" headings={[labelFor('work_type','Work type'),labelFor('issued_on','Issued on'),labelFor('worker','Karigar'),
+        ...(showBundle ? [labelFor('bundle','Bundle / size')] : []),labelFor('issued','Issued'),labelFor('received_on','Received on'),labelFor('received','Good pcs'),
+        labelFor('damaged','Damage'),'Pending',labelFor('rate','Rate'),'Amount',...(showSign ? [labelFor('signed_by','Sign')] : [])]} className="register-table numeric">
         <tbody>{record.jobwork.map(row => <tr key={row.id}>
-          <td>{dateLabel(row.issued_on)}</td><th scope="row">{row.work_type}</th><td>{row.worker}</td><td>{row.bundle || '—'}</td>
+          <th scope="row">{row.work_type}<Controls entity="jobwork" row={row} {...permissions} /></th><td>{dateLabel(row.issued_on)}</td><td>{row.worker}</td>{showBundle && <td>{row.bundle || '—'}</td>}
           <td>{number(row.issued)}</td><td>{dateLabel(row.received_on)}</td><td>{number(row.received)}</td><td>{number(row.damaged)}</td>
-          <td>{number(row.issued - row.received - row.damaged)}</td><td>{money(row.rate)}</td><td>{money(row.rate * row.issued)}</td><td>{row.signed_by || '—'}</td>
-          {permissions.canWrite && <td className="no-print"><Controls entity="jobwork" row={row} {...permissions} /></td>}
+          <td>{number(row.issued - row.received - row.damaged)}</td><td>{money(row.rate)}</td><td>{money(row.rate * row.issued)}</td>{showSign && <td>{row.signed_by || '—'}</td>}
         </tr>)}</tbody>
-        <tfoot><tr><th scope="row" colSpan={4}>Total</th><td>{number(record.jobwork.reduce((total,row) => total + row.issued,0))}</td><td />
+        <tfoot><tr><th scope="row" colSpan={showBundle ? 4 : 3}>Total</th><td>{number(record.jobwork.reduce((total,row) => total + row.issued,0))}</td><td />
           <td>{number(record.jobwork.reduce((total,row) => total + row.received,0))}</td><td>{number(record.jobwork.reduce((total,row) => total + row.damaged,0))}</td>
           <td>{number(record.jobwork.reduce((total,row) => total + row.issued - row.received - row.damaged,0))}</td><td />
-          <td>{money(record.jobwork.reduce((total,row) => total + Math.round(Number(row.rate) * 100) * row.issued,0) / 100)}</td><td />{permissions.canWrite && <td className="no-print" />}</tr></tfoot>
+          <td>{money(record.jobwork.reduce((total,row) => total + Math.round(Number(row.rate) * 100) * row.issued,0) / 100)}</td>{showSign && <td />}</tr></tfoot>
       </DataTable>
-      {record.jobwork.filter(row => row.remarks || customFacts(settings,'jobwork',row).length > 0).map(row =>
-        <div className="subrecord" key={row.id}><h4>{row.work_type} · {row.worker}</h4><Facts rows={[[ 'Remarks',row.remarks ],...customFacts(settings,'jobwork',row)]} /></div>)}
+      {record.jobwork.map(row => {
+        const notes = [...visibleFacts(settings,'jobwork',[['remarks','Remarks',row.remarks]]), ...customFacts(settings,'jobwork',row)].filter(([,value]) => value);
+        return notes.length > 0 && <div className="subrecord" key={row.id}><h4>{row.work_type} · {row.worker}</h4><Facts rows={notes} /></div>;
+      })}
     </>}
   </Panel>;
 }
@@ -268,25 +285,27 @@ export function LotPage({ lotNo, signal, role, settings, onSaved }) {
   return <>
     <div className="print-only"><strong>{settings.business_name}</strong><p>LOT CUTTING & JOBWORK REGISTER</p></div>
     <div className="page-heading"><div><a className="eyebrow no-print" href="#/lots">LOT REGISTER</a><h1>Lot {lot.lot_no}</h1>
-      <p>{dateLabel(lot.cutting_date)}{lot.style_no && ` · Style ${lot.style_no}`} <span className={`badge ${statusLabel(lot).toLowerCase()}`}>{statusLabel(lot)}</span></p></div>
+      <p>{dateLabel(lot.cutting_date)}{fieldVisible(settings,'lot','style_no') && lot.style_no && ` · ${fieldLabel(settings,'lot','style_no','Style')} ${lot.style_no}`} <span className={`badge ${statusLabel(lot).toLowerCase()}`}>{statusLabel(lot)}</span></p></div>
       <div className="actions no-print"><button type="button" className="button" onClick={() => window.print()}>Print lot</button>
         <a className="button" href={`#/reports/${encodeURIComponent(lot.lot_no)}`}>Lot report</a>
-        {canWrite && <button type="button" className="button primary" onClick={() => open({ entity:'lot',row:lot })}>Edit lot</button>}</div></div>
+        {canWrite && <button type="button" className="button primary" onClick={() => open({ entity:'lot',row:lot })}>Edit lot</button>}
+        {isAdmin && <button className={`button ${lot.archived ? '' : 'delete'}`} type="button" onClick={() => open({ entity:'lot',row:lot,operation:lot.archived ? 'restore' : 'delete' })}>
+          {lot.archived ? 'Restore lot' : 'Delete lot'}</button>}</div></div>
     <ErrorNotice error={error} retry={refresh} />
     <div className="metrics lot-metrics">{[['Total pieces',number(summary.pieces)],['Fabric inward',`${number(summary.inward)} m`],['Fabric remaining',`${number(summary.remaining)} m`],['Cutting entries',number(record.cuts.length)]].map(([label,value],index) =>
       <div key={label} className={`metric ${index === 0 ? 'featured' : ''}`}><span>{label}</span><strong>{value}</strong></div>)}</div>
     <Panel title="Lot details"><Facts rows={[
-      ['Register no.',lot.register_no],['Order / soft no.',lot.order_no],['Style',lot.style_no],['Fit',lot.fit],['Item',lot.item],['Party',lot.party],
-      ['Sort no.',lot.sort_no],['Cutting master',lot.cutting_master],['Updated',timeLabel(lot.updated_at)],...customFacts(settings,'lot',lot),
+      ...visibleFacts(settings,'lot',[
+        ['register_no','Register no.',lot.register_no],['order_no','Order / soft no.',lot.order_no],['style_no','Style',lot.style_no],
+        ['fit','Fit',lot.fit],['item','Item',lot.item],['party','Party',lot.party],['sort_no','Sort no.',lot.sort_no],['cutting_master','Cutting master',lot.cutting_master],
+      ]),['Updated',timeLabel(lot.updated_at)],...customFacts(settings,'lot',lot),
     ]} /></Panel>
     <Fabric {...{ record,settings,permissions }} /><Cutting {...{ record,settings,permissions }} />
     <Reconciliation record={record} summary={summary} />
     <Jobwork {...{ record,settings,permissions }} />
-    <Panel title="Accessories & remarks"><p className="remarks">{lot.remarks || '—'}</p></Panel>
+    {fieldVisible(settings,'lot','remarks') && <Panel title={fieldLabel(settings,'lot','remarks','Accessories & remarks')}><p className="remarks">{lot.remarks || '—'}</p></Panel>}
     <div className="signatures print-only"><span>Cutting master</span><span>Supervisor</span><span>Authorized sign</span></div>
     <Audit lot={lotNo} signal={signal} />
-    {isAdmin && <div className="actions no-print"><button className={`button ${lot.archived ? '' : 'delete'}`} type="button" onClick={() => open({ entity:'lot',row:lot,operation:lot.archived ? 'restore' : 'delete' })}>
-      {lot.archived ? 'Restore lot' : 'Archive lot'}</button></div>}
     {activeEditor}
   </>;
 }

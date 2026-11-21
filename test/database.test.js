@@ -21,7 +21,7 @@ test('migrations enforce roles, lot linkage, atomic cuts, audit and stale-write 
       grant usage on schema auth to authenticated;
       create publication supabase_realtime;
     `);
-    for (const file of ['202611210001_cutting_book.sql','202611210002_register_queries.sql']) {
+    for (const file of ['202611210001_cutting_book.sql','202611210002_register_queries.sql','202611210003_field_visibility.sql']) {
       await database.exec(await readFile(new URL(`../supabase/migrations/${file}`,import.meta.url),'utf8'));
     }
     await database.query('insert into auth.users values ($1),($2),($3),($4)',[admin,staff,viewer,unassigned]);
@@ -70,6 +70,7 @@ test('migrations enforce roles, lot linkage, atomic cuts, audit and stale-write 
     await login(viewer);
     assert.equal((await record('A-100')).lot.revision,4);
     await assert.rejects(change('A-100',4,'lot','update',{ remarks:'edit' }),{ code:'42501' });
+    await assert.rejects(database.query("select public.change_field_layout(1,array['lot.fit'],'{}')"),{ code:'42501' });
     await login(unassigned);
     assert.equal(await record('A-100'),null);
     await login(admin);
@@ -79,6 +80,13 @@ test('migrations enforce roles, lot linkage, atomic cuts, audit and stale-write 
     await login(admin);
     assert.equal(await change('A-100',5,'lot','restore',{}),6);
     assert.equal((await record('A-100')).lot.archived,false);
+    await assert.rejects(database.query("select public.change_field_layout(1,array['lot.lot_no'],'{}')"),{ code:'22023' });
+    assert.equal((await database.query(`select public.change_field_layout(1,array['lot.fit'],'{"lot.order_no":"Work order"}') as revision`)).rows[0].revision,2);
+    await assert.rejects(database.query("select public.change_field_layout(1,array[]::text[],'{}')"),{ code:'40001' });
+    const settings = (await database.query('select public.register_settings() as settings')).rows[0].settings;
+    assert.deepEqual(settings.hidden_fields,['lot.fit']);
+    assert.deepEqual(settings.field_labels,{ 'lot.order_no':'Work order' });
+    assert.equal((await record('A-100')).lot.fit,'Straight');
   } finally {
     await database.close();
   }

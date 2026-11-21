@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { rpc } from './api.js';
-import { number, quantitiesForSave, roundMetres, today } from './model.js';
+import { fieldLabel, fieldVisible, number, quantitiesForSave, roundMetres, today } from './model.js';
 import { DataTable, Dialog, ErrorNotice, Field } from './ui.jsx';
 
 export const entityName = { lot: 'Lot', colour: 'Colour', batch: 'Fabric batch', cut: 'Cutting entry', jobwork: 'Jobwork entry' };
@@ -37,6 +37,20 @@ const jobFields = [
   ['remarks','Jobwork remarks',{ type:'textarea' }],
 ];
 
+const entryFields = { lot:lotFields, batch:batchFields, cut:cutFields, jobwork:jobFields,
+  colour:[['name','Colour name',{ required:true, maxLength:100 }]] };
+
+const supplementalFields = {
+  lot:[['status','Status']], batch:[['colour_id','Colour']],
+  cut:[['batch_id','Fabric batch'],['method','Entry method'],['size_quantities','Size quantities'],
+    ['pieces','Main pieces'],['balance_pieces','Balance pieces']],
+};
+
+export const registerFields = Object.fromEntries(Object.entries(entryFields).map(([entity,fields]) => [entity,[
+  ...fields.map(([key,label,attributes]) => [key,label,!attributes?.required && key !== 'layers' && !(entity === 'jobwork' && key === 'received_on')]),
+  ...(supplementalFields[entity] || []),
+]]));
+
 function initialDraft(entity, row, record) {
   if (row) return { ...row, quantities: Object.fromEntries((row.quantities || []).map(quantity => [quantity.size_id,quantity])) };
   const defaults = {
@@ -53,11 +67,13 @@ export function LotEditor({ editor, record, settings, baseRevision, currentRevis
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [conflict, setConflict] = useState(false);
-  const action = { create:'Add', update:'Edit', delete: entity === 'lot' ? 'Archive' : 'Delete', restore:'Restore' }[operation];
+  const action = { create:'Add', update:'Edit', delete:'Delete', restore:'Restore' }[operation];
   const confirmOnly = operation === 'delete' || operation === 'restore';
   const stale = conflict || (baseRevision != null && currentRevision !== baseRevision);
   const sizes = settings.sizes.filter(size => size.active || draft.quantities?.[size.id]);
-  const fields = { lot:lotFields, batch:batchFields, cut:cutFields, jobwork:jobFields, colour:[['name','Colour name',{ required:true, maxLength:100 }]] }[entity];
+  const fields = entryFields[entity];
+  const isVisible = key => fieldVisible(settings,entity,key);
+  const labelFor = (key,label) => fieldLabel(settings,entity,key,label);
   const quantities = entity === 'cut' ? quantitiesForSave(draft,sizes) : [];
   const total = quantities.reduce((sum,quantity) => sum + quantity.pieces + quantity.balance_pieces,0);
   const setValue = (key, value) => setDraft(current => ({ ...current, [key]:value }));
@@ -75,9 +91,9 @@ export function LotEditor({ editor, record, settings, baseRevision, currentRevis
     try {
       if (!confirmOnly) {
         for (const [name,label,attributes] of fields) {
-          if (name === 'lot_no') continue;
-          const value = draft[name];
-          if (attributes?.required && String(value ?? '').trim() === '') throw new Error(`${label} is required.`);
+          if (name === 'lot_no' || (operation === 'update' && !isVisible(name))) continue;
+          const value = isVisible(name) ? draft[name] : undefined;
+          if (attributes?.required && String(value ?? '').trim() === '') throw new Error(`${labelFor(name,label)} is required.`);
           payload[name] = ['number','date'].includes(attributes?.type) && (value == null || value === '') ? null : value ?? '';
         }
         if (entity === 'lot' && row) payload.status = draft.status;
@@ -86,7 +102,8 @@ export function LotEditor({ editor, record, settings, baseRevision, currentRevis
         if (entity === 'jobwork' && Number(draft.received) + Number(draft.damaged) > Number(draft.issued)) {
           throw new Error('Received plus damaged pieces cannot exceed the number issued.');
         }
-        payload.extra = draft.extra;
+        payload.extra = Object.fromEntries(settings.field_definitions.filter(field => field.scope === entity && field.active && draft.extra?.[field.id] != null)
+          .map(field => [field.id,draft.extra[field.id]]));
       }
       if (!lot) throw new Error('Lot number is required.');
       await rpc('change_lot', { lot, expected:baseRevision ?? null, entity, operation, payload });
@@ -104,39 +121,39 @@ export function LotEditor({ editor, record, settings, baseRevision, currentRevis
       <div className="dialog-body">
         {stale && <p className="notice error" role="alert">This lot changed on another device. Your draft is still visible. Review or copy your values, then close and reopen the form using the latest record.</p>}
         <ErrorNotice error={error} />
-        {confirmOnly ? <p>{entity === 'lot' ? operation === 'restore' ? 'Restore this lot to the active register and production reports?' : 'Archive this lot and exclude it from active registers and reports? Its records and history will be retained.' : 'Remove this record from the lot? This change will be kept in the audit history.'}</p> : <fieldset disabled={busy}>
+        {confirmOnly ? <p>{entity === 'lot' ? operation === 'restore' ? 'Restore this lot to the active register and production reports?' : 'Delete this lot from the active register and reports? An admin can recover it from Lots → Archived.' : 'Delete this entry from the lot? The previous values will remain in the audit history.'}</p> : <fieldset disabled={busy}>
           <div className="form-grid">
-            {entity === 'batch' && <Field label="Colour" required value={draft.colour_id} change={value => setValue('colour_id',value)} options={[
+            {entity === 'batch' && <Field label={labelFor('colour_id','Colour')} required value={draft.colour_id} change={value => setValue('colour_id',value)} options={[
               ['', 'Select colour'], ...record.colours.map(colour => [colour.id,colour.name]),
             ]} />}
             {entity === 'cut' && <>
-              <Field label="Fabric batch" required value={draft.batch_id} change={value => setValue('batch_id',value)} options={[
+              <Field label={labelFor('batch_id','Fabric batch')} required value={draft.batch_id} change={value => setValue('batch_id',value)} options={[
                 ['', 'Select batch'], ...record.batches.map(batch => [batch.id,`${batch.batch_no} · ${record.colours.find(colour => colour.id === batch.colour_id)?.name || ''}`]),
               ]} />
-              <Field label="Entry method" value={draft.method} change={value => setValue('method',value)} options={[
+              <Field label={labelFor('method','Entry method')} value={draft.method} change={value => setValue('method',value)} options={[
                 ['actual','Enter actual quantities'], ['ratio','Calculate main pieces from ratio and layers'],
               ]} />
             </>}
-            {fields.map(([key,label,attributes]) => <Field key={key} label={label} maxLength={key === 'remarks' ? 4000 : 250}
+            {fields.filter(([key]) => isVisible(key)).map(([key,label,attributes]) => <Field key={key} label={labelFor(key,label)} maxLength={key === 'remarks' ? 4000 : 250}
               {...attributes} {...(key === 'layers' && draft.method === 'ratio' ? { required:true, min:1 } : {})}
               value={draft[key]} change={value => setValue(key,value)} readOnly={key === 'lot_no' && !!row} />)}
-            {entity === 'lot' && row && <Field label="Status" value={draft.status} change={value => setValue('status',value)}
+            {entity === 'lot' && row && <Field label={labelFor('status','Status')} value={draft.status} change={value => setValue('status',value)}
               options={[[ 'open','Open' ],['complete','Complete']]} />}
-            {settings.field_definitions.filter(field => field.scope === entity && (field.active || draft.extra?.[field.id] != null)).map(field =>
-              <Field key={field.id} label={field.label} readOnly={!field.active} maxLength={2000} value={draft.extra?.[field.id]}
+            {settings.field_definitions.filter(field => field.scope === entity && field.active).map(field =>
+              <Field key={field.id} label={field.label} maxLength={2000} value={draft.extra?.[field.id]}
                 change={value => setDraft(current => ({ ...current, extra:{ ...current.extra, [field.id]:value } }))} />)}
           </div>
           {entity === 'cut' && <div className="quantity-entry">
-            <div className="section-line"><h3>Size quantities</h3><strong>{number(total)} pieces</strong></div>
-            {Number(draft.marker_metres) > 0 && Number(draft.layers) > 0 && <button type="button" className="button small" onClick={() =>
+            <div className="section-line"><h3>{labelFor('size_quantities','Size quantities')}</h3><strong>{number(total)} pieces</strong></div>
+            {isVisible('marker_metres') && Number(draft.marker_metres) > 0 && Number(draft.layers) > 0 && <button type="button" className="button small" onClick={() =>
               setValue('main_used',roundMetres(Number(draft.marker_metres) * Number(draft.layers)))}>Use marker × layers for main metres</button>}
-            <DataTable label="Enter size quantities" headings={['Size',draft.method === 'ratio' ? 'Ratio' : 'Main pieces','Balance pieces','Total']} className="quantity-inputs">
+            <DataTable label="Enter size quantities" headings={['Size',draft.method === 'ratio' ? 'Ratio' : labelFor('pieces','Main pieces'),labelFor('balance_pieces','Balance pieces'),'Total']} className="quantity-inputs">
               <tbody>{sizes.map(size => {
                 const quantity = quantities.find(item => item.size_id === size.id);
                 const main = draft.method === 'ratio' ? 'ratio' : 'pieces';
                 const entry = draft.quantities?.[size.id];
                 return <tr key={size.id}><th scope="row">{size.label}{!size.active && ' (inactive)'}</th>
-                  {[main,'balance_pieces'].map(key => <td key={key}><input aria-label={`${size.label} ${key.replace('_',' ')}`} {...integer}
+                  {[main,'balance_pieces'].map(key => <td key={key}><input aria-label={`${size.label} ${labelFor(key,{ ratio:'Ratio',pieces:'Main pieces',balance_pieces:'Balance pieces' }[key])}`} {...integer}
                     max={key === 'ratio' ? 1000 : integer.max} value={entry?.[key] ?? ''} onChange={event => setQuantity(size.id,key,event.target.value)} /></td>)}
                   <td>{number((quantity?.pieces || 0) + (quantity?.balance_pieces || 0))}</td></tr>;
               })}</tbody>
