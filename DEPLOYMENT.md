@@ -43,6 +43,8 @@ Set the following build-time environment values locally in `.env.local` or in yo
 
 Run `npm ci` and `npm run build`, then publish the contents of `dist/` to an HTTPS static host. On a Git-connected host, set the project root to this folder, the build command to `npm run build`, and the publish directory to `dist`. Keep `/sw.js`, `/manifest.webmanifest`, and `/icons/` at the domain root and let the browser revalidate the service-worker file and `index.html` after a new deployment. Hash navigation works with static hosting. [Vite static deployment](https://vite.dev/guide/static-deploy.html).
 
+For the `darpan750/Cutting` GitHub Pages deployment, build with `npm run build -- --base=/Cutting/` and publish the contents of `dist/` to the root of `gh-pages`. The Supabase Auth Site URL and allowed redirect use `https://darpan750.github.io/Cutting/` including the trailing slash.
+
 ## Verify on two devices
 
 Use a test Supabase project or agree on a uniquely numbered test lot before trying the following on the live register.

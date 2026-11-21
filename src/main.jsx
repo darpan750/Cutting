@@ -8,6 +8,8 @@ import { Settings } from './settings.jsx';
 import { Empty, ErrorNotice, Field } from './ui.jsx';
 import './style.css';
 
+const appBase = import.meta.env.BASE_URL;
+
 function useRoute() {
   const [hash, setHash] = useState(window.location.hash);
   useEffect(() => {
@@ -21,7 +23,7 @@ function useRoute() {
 }
 
 function AppMark() {
-  return <img className="mark" src="/icons/book-192.png" width="44" height="44" alt="" />;
+  return <img className="mark" src={`${appBase}icons/book-192.png`} width="44" height="44" alt="" />;
 }
 
 function Welcome({ title, children }) {
@@ -36,6 +38,7 @@ function Login() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [recover, setRecover] = useState(false);
+  const install = useInstall();
   async function submit(event) {
     event.preventDefault();
     setBusy(true);
@@ -43,7 +46,7 @@ function Login() {
     setMessage('');
     try {
       if (recover) {
-        await checked(client.auth.resetPasswordForEmail(email.trim(),{ redirectTo:`${window.location.origin}/` }));
+        await checked(client.auth.resetPasswordForEmail(email.trim(),{ redirectTo:new URL(appBase,window.location.origin).href }));
         setMessage('If your account can receive a reset link, check your email.');
       } else await checked(client.auth.signInWithPassword({ email:email.trim(),password }));
     } catch (failure) { setError(failure); }
@@ -59,6 +62,10 @@ function Login() {
       <button className="button" type="button" disabled={busy} onClick={() => { setRecover(!recover); setError(null); setMessage(''); }}>
         {recover ? 'Back to sign in' : 'Forgot password?'}</button>
     </form>
+    {!recover && !install.installed && <div className="login-form">
+      <button className="button" type="button" onClick={install.install}>Install Cutting Book</button>
+      {install.showHelp && <p role="status">On iPhone, open this link in Safari and choose Share, then Add to Home Screen. On Android or PC, open your browser menu and choose Install app or Add to Home screen.</p>}
+    </div>}
   </Welcome>;
 }
 
@@ -193,5 +200,5 @@ function App() {
 
 createRoot(document.getElementById('root')).render(<App />);
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(error => console.warn('Install support unavailable',error)));
+  window.addEventListener('load', () => navigator.serviceWorker.register(`${appBase}sw.js`).catch(error => console.warn('Install support unavailable',error)));
 }

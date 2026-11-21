@@ -2,6 +2,8 @@
 
 A mobile-first lot register with a React frontend and a Supabase PostgreSQL backend. Each normalized lot number is its database primary key. The register starts empty apart from size definitions 28 through 42. All production records live in the shared Supabase project.
 
+**[Open and install Cutting Book](https://darpan750.github.io/Cutting/).** Sign in with your Cutting Book account. If your browser does not show an install prompt, use Safari’s Share → Add to Home Screen on iPhone or the Install app command in your browser menu on Android and PC.
+
 ## What the register covers
 
 - Lot details, order and style references, fabric colours, batches and barcodes, inward metres, shrinkage, and fabric reconciliation.
